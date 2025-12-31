@@ -6,7 +6,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func RootCommand() *cobra.Command {
+func RootCommand(ip string) *cobra.Command {
 	cmd := &cobra.Command{
 		Use: "fts",
 		Short: "FTS is a CLI tool for sending and receiving files to other machines.",
@@ -15,7 +15,7 @@ func RootCommand() *cobra.Command {
 		},
 	}
 
-	cmd.AddCommand(SendCommand())
+	cmd.AddCommand(SendCommand(ip))
 	cmd.AddCommand(ReceiveCommand())
 
 	return cmd

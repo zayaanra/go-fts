@@ -1,44 +1,51 @@
 package fts
 
 import (
-	"io"
-	"net/http"
-	"os"
+	"encoding/json"
+	"fmt"
 	"log"
+	"net"
+	"os"
+
+	"github.com/zayaanra/go-fts/pkg/api"
 
 	"github.com/spf13/cobra"
 )
 
-func SendCommand() *cobra.Command {
+func SendCommand(ip string) *cobra.Command {
 	return &cobra.Command{
-		Use:   "send ip_address file_path",
+		Use:   "send file_path",
 		Short: "Send a file",
 		Long:  "Send a file to a computer",
-		Args:  cobra.ExactArgs(2),
+		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
-			target := "http://" + args[0] + ":" + "3333"
-			
-			data, err := os.Open(args[1])
+			data, err := os.ReadFile(args[0])
 			if err != nil {
 				log.Fatal(err)
 			}
 
-			req, err := http.NewRequest("POST", target, data)
+			// TODO: Generate passphrase and session ID to send to relay server
 
-			client := &http.Client{}
-			resp, err := client.Do(req)
+			conn, err := net.Dial("tcp", fmt.Sprintf(ip + ":8090"))
+			if err != nil {
+				log.Fatal(err)
+			}
+			defer conn.Close()
+
+			message := api.Message{
+				Session_ID: "test",
+				Data: data,
+			}
+
+			bytes, err := json.Marshal(message)
 			if err != nil {
 				log.Fatal(err)
 			}
 
-			defer resp.Body.Close()
-
-			body, err := io.ReadAll(resp.Body)
+			_, err = conn.Write(bytes)
 			if err != nil {
 				log.Fatal(err)
 			}
-			log.Printf("Status Code: %d\n", resp.StatusCode)
-			log.Printf("Response Body: %s\n", body)
 		},
 	}
 }
