@@ -4,16 +4,17 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"os/signal"
+	// "os/signal"
 	"strings"
-	"syscall"
+	// "syscall"
 
 	"github.com/gorilla/websocket"
-	"github.com/zayaanra/go-fts/pkg/api"
-
+	"github.com/schollz/pake/v3"
 	"github.com/google/uuid"
 	"github.com/sethvargo/go-diceware/diceware"
 	"github.com/spf13/cobra"
+
+	"github.com/zayaanra/go-fts/pkg/api"
 )
 
 func SendCommand(ip string) *cobra.Command {
@@ -29,13 +30,12 @@ func SendCommand(ip string) *cobra.Command {
 			}
 
 			list, err := diceware.Generate(5)
-			passphrase := strings.Join(list, "-")
 
-			id := uuid.New().String()[:5]
-			id += "-" + passphrase 
+			session_id := uuid.New().String()[:5]
+			passphrase := session_id + "-" + strings.Join(list, "-") 
 
 			fmt.Fprintln(os.Stdout, "On the receiving machine, run the receive command and enter the following code:")
-			fmt.Println(id)
+			fmt.Println(passphrase)
 
 			conn, _, err := websocket.DefaultDialer.Dial("ws://" + ip + ":8080/ws", nil)
 			if err != nil {
@@ -43,21 +43,49 @@ func SendCommand(ip string) *cobra.Command {
 			}
 			defer conn.Close()
 
-			message := api.Message{
+			smsg := api.Message{
 				Protocol: api.INITIAL_CONNECT,
-				Session_ID: id,
+				Session_ID: session_id,
 			}
 
-			err = conn.WriteJSON(message)
+			err = conn.WriteJSON(smsg)
 			if err != nil {
 				log.Fatal(err)
 			}
 
-			sig := make(chan os.Signal, 1)
-			signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
+			var A *pake.Pake
 
-			<-sig
+			for {
+				var msg api.Message
+				err := conn.ReadJSON(&msg)
+				if err != nil {
+					return
+				}
 
+				switch msg.Protocol {
+				case api.CONFIRMATION:
+					fmt.Println("Confirmed connection to HUB")
+					// TODO: Failing because role == 0 for sender? Sender does not fail when role == 1
+					A, err = pake.InitCurve([]byte(passphrase), 0, "siec")
+					if err != nil {
+						log.Fatal(err)
+					}
+					
+					smsg := &api.Message{
+						Protocol: api.SHARE_PBK,
+						Session_ID: session_id,
+						PB_Key: A.Bytes(),
+					}
+					conn.WriteJSON(smsg)
+					
+				case api.SHARE_PBK:
+					fmt.Println("Received PBK")
+					err = A.Update(msg.PB_Key)
+					if err != nil {
+						log.Fatal(err)
+					}
+				}
+			}
 		},
 	}
 }
