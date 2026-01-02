@@ -16,7 +16,7 @@ func RootCommand(ip string) *cobra.Command {
 	}
 
 	cmd.AddCommand(SendCommand(ip))
-	cmd.AddCommand(ReceiveCommand())
+	cmd.AddCommand(ReceiveCommand(ip))
 
 	return cmd
 }
