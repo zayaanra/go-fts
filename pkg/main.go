@@ -2,23 +2,19 @@ package main
 
 import (
 	"log"
-	"os"
-	"os/signal"
-	"syscall"
+	"net/http"
 
 	"github.com/zayaanra/go-fts/pkg/server"
 )
 
 func main() {
-	server, err := server.NewServer("8090")
+	hub := server.NewHub()
+	go hub.Run()
+	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
+		server.ServeWS(hub, w, r)
+	})
+	err := http.ListenAndServe(":8080", nil)
 	if err != nil {
-		log.Fatalf("Something went wrong: %v", err)
+		log.Fatal("ListenAndServe: ", err)
 	}
-
-	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
-
-	<-sig
-	log.Println("Shutting down RelayServer...")
-	server.Close()
 }
