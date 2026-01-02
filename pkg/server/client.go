@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+
+	"github.com/zayaanra/go-fts/pkg/api"
 )
 
 const (
@@ -19,7 +21,7 @@ const (
 	pingPeriod = (pongWait * 9) / 10
 
 	// Maximum message size allowed from peer.
-	maxMessageSize = 512
+	maxMessageSize = 1024
 )
 
 type Client struct {
@@ -31,8 +33,8 @@ type Client struct {
 }
 
 var upgrader = websocket.Upgrader{
-	ReadBufferSize:  1024,
-	WriteBufferSize: 1024,
+	ReadBufferSize:  8192,
+	WriteBufferSize: 8192,
 }
 
 func (c *Client) readPump() {
@@ -44,16 +46,20 @@ func (c *Client) readPump() {
 	c.conn.SetReadDeadline(time.Now().Add(pongWait))
 	c.conn.SetPongHandler(func(string) error { c.conn.SetReadDeadline(time.Now().Add(pongWait)); return nil })
 	for {
-		_, message, err := c.conn.ReadMessage()
+		rmsg := api.Message{}
+		err := c.conn.ReadJSON(&rmsg)
 		if err != nil {
+			log.Println(err)
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
 				log.Printf("error: %v", err)
 			}
 			break
 		}
-		// message = bytes.TrimSpace(bytes.Replace(message, newline, space, -1))
-		c.hub.broadcast <- message
-		log.Println(message)
+		
+		switch rmsg.Protocol {
+		case api.SHARE_PBK:
+			c.hub.ExchangePBKs(c, rmsg.Session_ID, rmsg.PB_Key)
+		}
 	}
 }
 
@@ -79,13 +85,6 @@ func (c *Client) writePump() {
 			}
 			w.Write(message)
 
-			// Add queued chat messages to the current websocket message.
-			// n := len(c.send)
-			// for i := 0; i < n; i++ {
-			// 	w.Write(newline)
-			// 	w.Write(<-c.send)
-			// }
-
 			if err := w.Close(); err != nil {
 				return
 			}
@@ -104,11 +103,19 @@ func ServeWS(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		log.Println(err)
 		return
 	}
+
+	rmsg := &api.Message{}
+	err = conn.ReadJSON(rmsg)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
 	client := &Client{hub: hub, conn: conn, send: make(chan []byte)}
 	client.hub.register <- client
 
-	// TODO: Add handling of requests from client to Hub
-
 	go client.writePump()
 	go client.readPump()
+
+	hub.FillRoom(client, rmsg.Session_ID)
 }
