@@ -16,9 +16,16 @@ type Hub struct {
 	rooms		map[string]*Room
 }
 
+type ExtendedClient struct {
+	c *Client
+	ready bool
+	public_key []byte
+}
+
 type Room struct {
-	a	*Client
-	b	*Client
+	a *ExtendedClient
+	b *ExtendedClient
+	exchanged bool
 }
 
 func NewHub() *Hub {
@@ -56,39 +63,71 @@ func (h *Hub) Run() {
 
 func (h *Hub) FillRoom(client *Client, session_id string) {
 	room, ok := h.rooms[session_id]
-	// If room exists, connect client B and broadcast to room that both clients (A and B) have been accepted
-	if ok {
-		room.b = client
+	if !ok {
+		h.rooms[session_id] = &Room{
+			a: &ExtendedClient{c: client, ready: false, public_key: nil},
+			b: nil,
+			exchanged: false,
+		}
+	} else {
+		room.b = &ExtendedClient{c: client, ready: false, public_key: nil}
+
 		smsg := api.Message{Protocol: api.CONFIRMATION}
 		data, err := json.Marshal(smsg)
 		if err != nil {
 			log.Println(err)
 			return
 		}
-		room.a.send <- data
-		room.b.send <- data
-	// If room does not exist yet, create one with only client A
-	} else {
-		h.rooms[session_id] = &Room{a: client, b: nil}
+
+		room.a.ready = true
+		room.b.ready = true
+
+		room.a.c.send <- data
+		room.b.c.send <- data
 	}
 }
 
 func (h *Hub) ExchangePBKs(client *Client, session_id string, pb_key []byte) {
 	room, ok := h.rooms[session_id]
-	if ok {
-		smsg := api.Message{
-			Protocol: api.SHARE_PBK,
-			PB_Key: pb_key,
-		}
-		data, err := json.Marshal(smsg)
-		if err != nil {
-			log.Println(err)
-			return
-		}
-		if room.a == client {
-			room.b.send <- data
-		} else {
-			room.a.send <- data
-		}
+	if !ok {
+		return
+	}
+
+	if room.exchanged {
+		return
+	}
+
+	if !room.a.ready || !room.b.ready {
+		return
+	}
+
+	if room.a == nil || room.b == nil {
+		return
+	}
+
+	if room.a.c == client {
+		room.a.public_key = pb_key
+	} else if room.b.c == client {
+		room.b.public_key = pb_key
+	}
+
+	if room.a.public_key != nil && room.b.public_key != nil {
+		room.exchanged = true
+
+		msgA, _ := json.Marshal(
+			api.Message{
+				Protocol: api.SHARE_PBK,
+				PB_Key: room.b.public_key,
+			},
+		)
+
+		msgB, _ := json.Marshal(
+			api.Message{
+				Protocol: api.SHARE_PBK,
+				PB_Key: room.a.public_key,
+			},
+		)
+		room.a.c.send <- msgA
+		room.b.c.send <- msgB
 	}
 }

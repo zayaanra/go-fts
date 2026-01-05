@@ -57,6 +57,8 @@ func (c *Client) readPump() {
 		}
 		
 		switch rmsg.Protocol {
+		case api.INITIAL_CONNECT:
+			c.hub.FillRoom(c, rmsg.Session_ID)
 		case api.SHARE_PBK:
 			c.hub.ExchangePBKs(c, rmsg.Session_ID, rmsg.PB_Key)
 		}
@@ -104,12 +106,12 @@ func ServeWS(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rmsg := &api.Message{}
-	err = conn.ReadJSON(rmsg)
-	if err != nil {
-		log.Println(err)
-		return
-	}
+	// rmsg := &api.Message{}
+	// err = conn.ReadJSON(rmsg)
+	// if err != nil {
+	// 	log.Println(err)
+	// 	return
+	// }
 
 	client := &Client{hub: hub, conn: conn, send: make(chan []byte)}
 	client.hub.register <- client
@@ -117,5 +119,5 @@ func ServeWS(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	go client.writePump()
 	go client.readPump()
 
-	hub.FillRoom(client, rmsg.Session_ID)
+	// hub.FillRoom(client, rmsg.Session_ID)
 }
