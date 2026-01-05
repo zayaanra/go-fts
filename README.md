@@ -1,2 +1,2 @@
 # go-fts
-Testing something in Go
+File Transfer Service in Go
