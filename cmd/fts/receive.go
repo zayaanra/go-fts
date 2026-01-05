@@ -76,7 +76,6 @@ func ReceiveCommand(ip string) *cobra.Command {
 					}
 				}
 			}
-			
 		},
 	}
 }

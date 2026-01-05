@@ -4,13 +4,14 @@ import (
 	"fmt"
 	"log"
 	"os"
+
 	// "os/signal"
 	"strings"
 	// "syscall"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/schollz/pake/v3"
-	"github.com/google/uuid"
 	"github.com/sethvargo/go-diceware/diceware"
 	"github.com/spf13/cobra"
 
@@ -32,9 +33,9 @@ func SendCommand(ip string) *cobra.Command {
 			list, err := diceware.Generate(5)
 
 			session_id := uuid.New().String()[:5]
-			passphrase := session_id + "-" + strings.Join(list, "-") 
+			passphrase := session_id + "-" + strings.Join(list, "-")
 
-			fmt.Fprintln(os.Stdout, "On the receiving machine, run the receive command and enter the following code:")
+			fmt.Println("On the receiving machine, run the receive command and enter the following code:")
 			fmt.Println(passphrase)
 
 			conn, _, err := websocket.DefaultDialer.Dial("ws://" + ip + ":8080/ws", nil)
@@ -44,7 +45,7 @@ func SendCommand(ip string) *cobra.Command {
 			defer conn.Close()
 
 			smsg := api.Message{
-				Protocol: api.INITIAL_CONNECT,
+				Protocol:   api.INITIAL_CONNECT,
 				Session_ID: session_id,
 			}
 
@@ -70,14 +71,14 @@ func SendCommand(ip string) *cobra.Command {
 					if err != nil {
 						log.Fatal(err)
 					}
-					
+
 					smsg := &api.Message{
-						Protocol: api.SHARE_PBK,
+						Protocol:   api.SHARE_PBK,
 						Session_ID: session_id,
-						PB_Key: A.Bytes(),
+						PB_Key:     A.Bytes(),
 					}
 					conn.WriteJSON(smsg)
-					
+
 				case api.SHARE_PBK:
 					fmt.Println("Received PBK")
 					err = A.Update(msg.PB_Key)
