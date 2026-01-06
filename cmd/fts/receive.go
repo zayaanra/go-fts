@@ -7,11 +7,12 @@ import (
 	"os"
 	"strings"
 
-	"github.com/schollz/pake/v3"
 	"github.com/gorilla/websocket"
+	"github.com/schollz/pake/v3"
 	"github.com/spf13/cobra"
 
 	"github.com/zayaanra/go-fts/pkg/api"
+	"github.com/zayaanra/go-fts/internal/sec"
 )
 
 func ReceiveCommand(ip string) *cobra.Command {
@@ -21,11 +22,12 @@ func ReceiveCommand(ip string) *cobra.Command {
 		Long:  "Receive a file from a machine",
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
-			scanner := bufio.NewScanner(os.Stdin)
 			fmt.Println("Enter the code shared with you:")
-			scanner.Scan()
-			passphrase := scanner.Text()
 
+			scanner := bufio.NewScanner(os.Stdin)
+			scanner.Scan()
+
+			passphrase := scanner.Text()
 			session_id := strings.Split(passphrase, "-")[0]
 
 			conn, _, err := websocket.DefaultDialer.Dial("ws://" + ip + ":8080/ws", nil)
@@ -34,17 +36,21 @@ func ReceiveCommand(ip string) *cobra.Command {
 			}
 			defer conn.Close()
 
-			message := api.Message{
-				Protocol: api.INITIAL_CONNECT,
-				Session_ID: session_id,
-			}
 
-			err = conn.WriteJSON(message)
+			err = conn.WriteJSON(api.Message{
+				Protocol:   api.INITIAL_CONNECT,
+				Session_ID: session_id,
+			})
 			if err != nil {
 				log.Fatal(err)
 			}
 			
-			var B *pake.Pake
+			B, err := pake.InitCurve([]byte(passphrase), 1, "siec")
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			var session_key []byte
 
 			for {
 				var msg api.Message
@@ -56,24 +62,55 @@ func ReceiveCommand(ip string) *cobra.Command {
 				switch msg.Protocol {
 				case api.CONFIRMATION:
 					fmt.Println("Confirmed connection to HUB")
-					B, err = pake.InitCurve([]byte(passphrase), 1, "siec")
-					if err != nil {
-						log.Fatal(err)
-					}
-					
-					smsg := &api.Message{
-						Protocol: api.SHARE_PBK,
-						Session_ID: session_id,
-						PB_Key: B.Bytes(),
-					}
-					conn.WriteJSON(smsg)
-				
-				case api.SHARE_PBK:
+
+				case api.SEND_A_TO_B:
 					fmt.Println("Received PBK")
+
 					err = B.Update(msg.PB_Key)
 					if err != nil {
 						log.Fatal(err)
 					}
+
+					conn.WriteJSON(api.Message{
+						Protocol:   api.SEND_B_TO_A,
+						Session_ID: session_id,
+						PB_Key:     B.Bytes(),
+					})
+				
+				case api.SHARE_CONNECTION_INFO:
+					fmt.Println("Received connection info from A")
+					
+					session_key, err = B.SessionKey()
+					if err != nil {
+						log.Fatal(err)
+					}
+
+					// decrypted, err := sec.DecryptAES(msg.Data, session_key)
+					// if err != nil {
+					// 	log.Fatal(err)
+					// }
+					
+					myIP := conn.LocalAddr().String()
+					encrypted, err := sec.EncryptAES([]byte(myIP), session_key)
+					if err != nil {
+						log.Fatal(err)
+					}
+
+					conn.WriteJSON(api.Message{
+						Protocol: api.SHARE_CONNECTION_INFO,
+						Session_ID: session_id,
+						Data: encrypted,
+					})		
+
+				case api.SEND_FILE_DATA:
+					fmt.Println("Receiving file data from A")
+					
+					decrypted, err := sec.DecryptAES(msg.Data, session_key)
+					if err != nil {
+						log.Fatal(err)
+					}
+
+					os.WriteFile(args[0], decrypted, 0777)
 				}
 			}
 		},

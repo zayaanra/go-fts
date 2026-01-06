@@ -16,6 +16,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/zayaanra/go-fts/pkg/api"
+	"github.com/zayaanra/go-fts/internal/sec"
 )
 
 func SendCommand(ip string) *cobra.Command {
@@ -25,7 +26,7 @@ func SendCommand(ip string) *cobra.Command {
 		Long:  "Send a file to a computer",
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
-			_, err := os.ReadFile(args[0])
+			data, err := os.ReadFile(args[0])
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -44,47 +45,98 @@ func SendCommand(ip string) *cobra.Command {
 			}
 			defer conn.Close()
 
-			smsg := api.Message{
+			err = conn.WriteJSON(api.Message{
 				Protocol:   api.INITIAL_CONNECT,
 				Session_ID: session_id,
-			}
+			})
 
-			err = conn.WriteJSON(smsg)
 			if err != nil {
 				log.Fatal(err)
 			}
 
-			var A *pake.Pake
+			A, err := pake.InitCurve([]byte(passphrase), 0, "siec")
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			var session_key []byte
 
 			for {
 				var msg api.Message
 				err := conn.ReadJSON(&msg)
 				if err != nil {
-					return
+					log.Fatal(err)
 				}
 
 				switch msg.Protocol {
 				case api.CONFIRMATION:
 					fmt.Println("Confirmed connection to HUB")
-					// TODO: Failing because role == 0 for sender? Sender does not fail when role == 1
-					A, err = pake.InitCurve([]byte(passphrase), 0, "siec")
-					if err != nil {
-						log.Fatal(err)
-					}
 
-					smsg := &api.Message{
-						Protocol:   api.SHARE_PBK,
+					conn.WriteJSON(api.Message{
+						Protocol: api.SEND_A_TO_B,
 						Session_ID: session_id,
-						PB_Key:     A.Bytes(),
-					}
-					conn.WriteJSON(smsg)
+						PB_Key: A.Bytes(),
+					})
 
-				case api.SHARE_PBK:
-					fmt.Println("Received PBK")
+				case api.SEND_B_TO_A:
+					fmt.Println("Received PBK from B")
+					
 					err = A.Update(msg.PB_Key)
 					if err != nil {
 						log.Fatal(err)
 					}
+					
+					session_key, err = A.SessionKey()
+					if err != nil {
+						log.Fatal(err)
+					}
+
+					myIP := conn.LocalAddr().String()
+					encrypted, err := sec.EncryptAES([]byte(myIP), session_key)
+					if err != nil {
+						log.Fatal(err)
+					}
+
+					conn.WriteJSON(api.Message{
+						Protocol: api.SHARE_CONNECTION_INFO,
+						Session_ID: session_id,
+						Data: encrypted,
+					})
+				
+				case api.SHARE_CONNECTION_INFO:
+					fmt.Println("Received connection info from B")
+
+					_, err := sec.DecryptAES(msg.Data, session_key)
+					if err != nil {
+						log.Fatal(err)
+					}
+
+					encrypted, err := sec.EncryptAES(data, session_key)
+					if err != nil {
+						log.Fatal(encrypted)
+					}
+
+					// receiver_ip := string(decrypted)
+					
+					// smsg := &api.Message{
+					// 	Protocol: api.SEND_FILE_DATA,
+					// 	Session_ID: session_id,
+					// 	Data: encrypted,
+					// }
+
+					// TODO: Open direct TCP connection to B to send file data to
+
+					// ip := strings.Split(string(B_ip), ":")[0]
+
+					// listener, err := net.L
+					// if err != nil {
+					// 	log.Fatal(err)
+					// }
+					// defer newConn.Close()
+
+
+					// newConn.WriteJSON(smsg)
+
 				}
 			}
 		},
