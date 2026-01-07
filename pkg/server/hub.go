@@ -87,7 +87,7 @@ func (h *Hub) FillRoom(client *Client, session_id string) {
 	}
 }
 
-func (h *Hub) ExchangePBKs(client *Client, session_id string, pb_key []byte) {
+func (h *Hub) ExchangePBKs(client *Client, session_id string, pb_key []byte, protocol int) {
 	room, ok := h.rooms[session_id]
 	if !ok {
 		return
@@ -105,29 +105,32 @@ func (h *Hub) ExchangePBKs(client *Client, session_id string, pb_key []byte) {
 		return
 	}
 
-	if room.a.c == client {
-		room.a.public_key = pb_key
-	} else if room.b.c == client {
-		room.b.public_key = pb_key
+	smsg, _ := json.Marshal(
+		api.Message{
+			Protocol: protocol,
+			PB_Key: pb_key,
+		},
+	)
+
+	switch protocol {
+	case api.SEND_A_TO_B:
+		room.b.c.send <- smsg
+	case api.SEND_B_TO_A:
+		room.a.c.send <- smsg
+	}
+}
+
+func (h *Hub) ExchangeConnections(client *Client, session_id string, msg api.Message) {
+	room, ok := h.rooms[session_id]
+	if !ok {
+		return
 	}
 
-	if room.a.public_key != nil && room.b.public_key != nil {
-		room.exchanged = true
-
-		msgA, _ := json.Marshal(
-			api.Message{
-				Protocol: api.SHARE_PBK,
-				PB_Key: room.b.public_key,
-			},
-		)
-
-		msgB, _ := json.Marshal(
-			api.Message{
-				Protocol: api.SHARE_PBK,
-				PB_Key: room.a.public_key,
-			},
-		)
-		room.a.c.send <- msgA
-		room.b.c.send <- msgB
+	smsg, _ := json.Marshal(msg)
+	switch client {
+	case room.a.c:
+		room.b.c.send <- smsg
+	case room.b.c:
+		room.a.c.send <- smsg
 	}
 }
