@@ -1,24 +1,24 @@
 package api
 
 const (
-	INITIAL_CONNECT = 0 // Signifies the message is for sending a passphrase to relay server for PAKE
-	CONFIRMATION = 1 // Signifies that both clients (A and B) have connected to the relay server so that the PAKE procss can begin
-	SHARE_PBK = 2 // Signifies that both parties want to share their public key
-	SEND_A_TO_B	= 3
-	SEND_B_TO_A = 4
-	SHARE_CONNECTION_INFO = 5
-	SEND_FILE_DATA = 6
+	INITIAL_CONNECT       = 0
+	CONFIRMATION          = 1
+	SHARE_CONNECTION_INFO = 2
+	SHARE_PUBLIC_KEY	  = 4
+	SHARE_FILE_DATA       = 5
 )
 
 type Message struct {
 	Protocol int
-
-	Session_ID string
+	PublicKey []byte
+	SessionID string
 	Data       []byte
-
-	PB_Key []byte
 }
 
-type Member struct {
-	
+type Peer interface {
+	Start() error
+	Listen() error
+	HandlePublicKeyExchange([]byte) ([]byte, error)
+	HandleIPExchange([]byte) error
+	Close() error
 }
