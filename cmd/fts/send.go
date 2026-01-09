@@ -1,8 +1,11 @@
 package fts
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
+	"net"
+	"os"
 	"strings"
 
 	"github.com/google/uuid"
@@ -11,14 +14,14 @@ import (
 	"github.com/sethvargo/go-diceware/diceware"
 	"github.com/spf13/cobra"
 
-	"github.com/zayaanra/go-fts/pkg/api"
 	"github.com/zayaanra/go-fts/internal/sec"
+	"github.com/zayaanra/go-fts/pkg/api"
 )
 
 type Sender struct {
 	HubAddress string
 	conn *websocket.Conn
-	FilePath string
+	FileData []byte
 	SessionID string
 	SessionKey []byte
 	Passphrase string
@@ -40,7 +43,7 @@ func (s *Sender) Start() error {
 
 	err = s.conn.WriteJSON(api.Message{
 		Protocol:   api.INITIAL_CONNECT,
-		Session_ID: s.SessionID,
+		SessionID: s.SessionID,
 	})
 	if err != nil {
 		return err
@@ -62,9 +65,9 @@ func (s *Sender) Listen() error {
 			fmt.Println("Confirmed connection to HUB")
 			err = handleConfirmation(s.conn, s.SessionID, s.P.Bytes())
 
-		case api.SEND_B_TO_A:
+		case api.SHARE_PUBLIC_KEY:
 			fmt.Println("Received PBK from B")
-			sessionKey, err := handleBtoA(s.P, s.conn, s.SessionID, msg.PB_Key)
+			sessionKey, err := s.HandlePublicKeyExchange(msg.PublicKey)
 			if err != nil {
 				return err
 			}
@@ -72,7 +75,7 @@ func (s *Sender) Listen() error {
 		
 		case api.SHARE_CONNECTION_INFO:
 			fmt.Println("Received connection info from B")
-			err = handleIPExchange(s.conn, s.SessionID, s.SessionKey, msg.Data)
+			err = s.HandleIPExchange(msg.Data)
 		}
 
 		if err != nil {
@@ -81,34 +84,25 @@ func (s *Sender) Listen() error {
 	}
 }
 
-func handleConfirmation(conn *websocket.Conn, sessionID string, publicKey []byte) error {
-	err := conn.WriteJSON(api.Message{
-		Protocol: api.SEND_A_TO_B,
-		Session_ID: sessionID,
-		PB_Key: publicKey,
-	})
-	return err
-}
-
-func handleBtoA(p *pake.Pake, conn *websocket.Conn, sessionID string, publicKey []byte) ([]byte, error) {
-	err := p.Update(publicKey)
+func (s *Sender) HandlePublicKeyExchange(publicKey []byte) ([]byte, error) {
+	err := s.P.Update(publicKey)
 	if err != nil {
 		return nil, err
 	}
 	
-	sessionKey, err := p.SessionKey()
+	sessionKey, err := s.P.SessionKey()
 	if err != nil {
 		return nil, err
 	}
 
-	encrypted, err := sec.EncryptAES([]byte(conn.LocalAddr().String()), sessionKey)
+	encrypted, err := sec.EncryptAES([]byte(s.conn.LocalAddr().String()), sessionKey)
 	if err != nil {
 		return nil, err
 	}
 
-	err = conn.WriteJSON(api.Message{
+	err = s.conn.WriteJSON(api.Message{
 		Protocol: api.SHARE_CONNECTION_INFO,
-		Session_ID: sessionID,
+		SessionID: s.SessionID,
 		Data: encrypted,
 	})
 	if err != nil {
@@ -118,78 +112,92 @@ func handleBtoA(p *pake.Pake, conn *websocket.Conn, sessionID string, publicKey 
 	return sessionKey, nil
 }
 
-func handleIPExchange(conn *websocket.Conn, sessionID string, sessionKey []byte, data []byte) error {
-	_, err := sec.DecryptAES(data, sessionKey)
+func (s *Sender) HandleIPExchange(data []byte) error {
+	decrypted, err := sec.DecryptAES(data, s.SessionKey)
 	if err != nil {
 		return err
 	}
 
-	// encrypted, err := sec.EncryptAES(data, sessionKey)
-	// if err != nil {
-	// 	return err
-	// }
+	receiverIP := string(decrypted) + ":8090"
+	log.Println(receiverIP)
+	conn, err := net.Dial("tcp", receiverIP)
+	if err != nil {
+		log.Fatal(err)
+	}
 
-	// receiver_ip := string(decrypted)
-	
-	// smsg := &api.Message{
-	// 	Protocol: api.SEND_FILE_DATA,
-	// 	Session_ID: session_id,
-	// 	Data: encrypted,
-	// }
+	fileData, err := json.Marshal(api.Message{
+		Protocol: api.SHARE_FILE_DATA,
+		Data: s.FileData,
+	})
 
-	// TODO: Open direct TCP connection to B to send file data to
+	encrypted, err := sec.EncryptAES(fileData, s.SessionKey)
+	if err != nil {
+		log.Fatal(err)
+	}
 
-	// ip := strings.Split(string(B_ip), ":")[0]
+	_, err = conn.Write(encrypted)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer conn.Close()
 
-	// listener, err := net.L
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
-	// defer newConn.Close()
+	fmt.Println("Sent file to receiver")
 
-
-	// newConn.WriteJSON(smsg)
 	return nil
+}
+
+func (s *Sender) Close() error {
+	if err := s.conn.Close(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func handleConfirmation(conn *websocket.Conn, sessionID string, publicKey []byte) error {
+	err := conn.WriteJSON(api.Message{
+		Protocol: api.SHARE_PUBLIC_KEY,
+		SessionID: sessionID,
+		PublicKey: publicKey,
+	})
+	return err
 }
 
 func SendCommand(ip string) *cobra.Command {
 	return &cobra.Command{
-		Use:   "send file_path",
+		Use:   "send [file-path]",
 		Short: "Send a file",
-		Long:  "Send a file to a computer",
+		Long:  "Send a file to a machine",
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
-			// TODO: What if file is too large to be stored in memory?
-			// data, err := os.ReadFile(args[0])
-			// if err != nil {
-			// 	log.Fatal(err)
-			// }
+			// TODO: What if file is too large to be stored in memory? (can stream data to receiver)
+			data, err := os.ReadFile(args[0])
+			if err != nil {
+				log.Fatal(err)
+			}
 			
 			// TODO: Return errors up the chain and handle them in the RunE field of the Cobra command
 			// TODO: Ensure PAKE session key is passed through Key Derivation Function (KDF) like HKDF
 
-			list, err := diceware.Generate(5)
+			list, _ := diceware.Generate(5)
 			session_id := uuid.New().String()[:5]
 			passphrase := session_id + "-" + strings.Join(list, "-")
-
-			s := Sender{
-				HubAddress: ip, 
-				FilePath: args[0], 
-				SessionID: session_id, 
+			
+			var p api.Peer = &Sender{
+				HubAddress: ip,
+				FileData: data,
+				SessionID: session_id,
 				Passphrase: passphrase,
 			}
 
-			err = s.Start()
-			if err != nil {
+			if err := p.Start(); err != nil {
 				log.Fatal(err)
 			}
-			defer s.conn.Close()
+			defer p.Close()
 
 			fmt.Println("On the receiving machine, run the receive command and enter the following code:")
 			fmt.Println(passphrase)
 
-			err = s.Listen()
-			if err != nil {
+			if err := p.Listen(); err != nil {
 				log.Fatal(err)
 			}
 		},

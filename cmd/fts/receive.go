@@ -2,8 +2,11 @@ package fts
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
+	"io"
 	"log"
+	"net"
 	"os"
 	"strings"
 
@@ -11,8 +14,8 @@ import (
 	"github.com/schollz/pake/v3"
 	"github.com/spf13/cobra"
 
-	"github.com/zayaanra/go-fts/pkg/api"
 	"github.com/zayaanra/go-fts/internal/sec"
+	"github.com/zayaanra/go-fts/pkg/api"
 )
 
 type Receiver struct {
@@ -40,7 +43,7 @@ func (r *Receiver) Start() error {
 
 	err = r.conn.WriteJSON(api.Message{
 		Protocol:   api.INITIAL_CONNECT,
-		Session_ID: r.SessionID,
+		SessionID: r.SessionID,
 	})
 	if err != nil {
 		return err
@@ -61,9 +64,9 @@ func (r * Receiver) Listen() error {
 		case api.CONFIRMATION:
 			fmt.Println("Confirmed connection to HUB")
 
-		case api.SEND_A_TO_B:
+		case api.SHARE_PUBLIC_KEY:
 			fmt.Println("Received PBK from A")
-			sessionKey, err := handleAtoB(r.P, r.conn, r.SessionID, msg.PB_Key)
+			sessionKey, err := r.HandlePublicKeyExchange(msg.PublicKey)
 			if err != nil {
 				return err
 			}
@@ -71,49 +74,72 @@ func (r * Receiver) Listen() error {
 
 		case api.SHARE_CONNECTION_INFO:
 			fmt.Println("Received connection info from A")
-			err = handleIPExchange_2(r.conn, r.SessionID, r.SessionKey)
+			err = r.HandleIPExchange(nil)
 			if err != nil {
 				return err
 			}
-			// session_key, err = B.SessionKey()
-			// if err != nil {
-			// 	log.Fatal(err)
-			// }
 
-			// decrypted, err := sec.DecryptAES(msg.Data, session_key)
-			// if err != nil {
-			// 	log.Fatal(err)
-			// }
+			// TODO: better way to do this net.Listen?
+			ln, err := net.Listen("tcp", ":8090")
+			if err != nil {
+				log.Fatal(err)
+			}
+			defer ln.Close()
+
+			conn, err := ln.Accept()
+			if err != nil {
+				log.Fatal(err)
+			}
+			defer conn.Close()
+
+			encrypted, err := io.ReadAll(conn)
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			decrypted, err := sec.DecryptAES(encrypted, r.SessionKey)
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			var msg api.Message
+			if err := json.Unmarshal(decrypted, &msg); err != nil {
+				log.Fatal(err)
+			}
+
+			// TODO: Write file to local filepath
+			// log.Printf("Received message: %+v\n", string(msg.Data))
 			
-		case api.SEND_FILE_DATA:
+			
+		case api.SHARE_FILE_DATA:
 			fmt.Println("Receiving file data from A")
 			
-			// decrypted, err := sec.DecryptAES(msg.Data, session_key)
-			// if err != nil {
-			// 	log.Fatal(err)
-			// }
+			decrypted, err := sec.DecryptAES(msg.Data, r.SessionKey)
+			if err != nil {
+				log.Fatal(err)
+			}
 
-			// os.WriteFile(args[0], decrypted, 0777)
+			os.WriteFile(r.FilePath, decrypted, 0777)
 		}
 	}
 }
 
-func handleAtoB(p *pake.Pake, conn *websocket.Conn, sessionID string, publicKey []byte) ([]byte, error) {
-	err := p.Update(publicKey)
+func (r *Receiver) HandlePublicKeyExchange(publicKey []byte) ([]byte, error) {
+	err := r.P.Update(publicKey)
 	if err != nil {
 		return nil, err
 	}
 
-	err = conn.WriteJSON(api.Message{
-		Protocol:   api.SEND_B_TO_A,
-		Session_ID: sessionID,
-		PB_Key:     p.Bytes(),
+	err = r.conn.WriteJSON(api.Message{
+		Protocol:   api.SHARE_PUBLIC_KEY,
+		SessionID: r.SessionID,
+		PublicKey:     r.P.Bytes(),
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	sessionKey, err := p.SessionKey()
+	sessionKey, err := r.P.SessionKey()
 	if err != nil {
 		return nil, err
 	}
@@ -121,15 +147,16 @@ func handleAtoB(p *pake.Pake, conn *websocket.Conn, sessionID string, publicKey 
 	return sessionKey, nil
 }
 
-func handleIPExchange_2(conn *websocket.Conn, sessionID string, sessionKey []byte) error {
-	encrypted, err := sec.EncryptAES([]byte(conn.LocalAddr().String()), sessionKey)
+func (r *Receiver) HandleIPExchange(data []byte) error {
+	host := strings.Split(r.conn.LocalAddr().String(), ":")[0]
+	encrypted, err := sec.EncryptAES([]byte(host), r.SessionKey)
 	if err != nil {
 		return err
 	}
 
-	err = conn.WriteJSON(api.Message{
+	err = r.conn.WriteJSON(api.Message{
 		Protocol: api.SHARE_CONNECTION_INFO,
-		Session_ID: sessionID,
+		SessionID: r.SessionID,
 		Data: encrypted,
 	})
 	if err != nil {
@@ -139,9 +166,16 @@ func handleIPExchange_2(conn *websocket.Conn, sessionID string, sessionKey []byt
 	return nil
 }
 
+func (r *Receiver) Close() error {
+	if r.conn != nil {
+		return r.conn.Close()
+	}
+	return nil
+}
+
 func ReceiveCommand(ip string) *cobra.Command {
 	return &cobra.Command{
-		Use:   "receive file_path",
+		Use:   "receive [file-path]",
 		Short: "Receive a file",
 		Long:  "Receive a file from a machine",
 		Args:  cobra.ExactArgs(1),
@@ -154,19 +188,20 @@ func ReceiveCommand(ip string) *cobra.Command {
 			passphrase := scanner.Text()
 			sessionID := strings.Split(passphrase, "-")[0]
 			
-			r := Receiver{
+			var p api.Peer = &Receiver{
 				HubAddress: ip,
 				FilePath: args[0],
 				SessionID: sessionID,
 				Passphrase: passphrase,
 			}
-			err := r.Start()
-			if err != nil {
+
+			if err := p.Start(); err != nil {
 				log.Fatal(err)
 			}
+			defer p.Close()
+
 			
-			err = r.Listen()
-			if err != nil {
+			if err := p.Listen(); err != nil {
 				log.Fatal(err)
 			}
 		},
