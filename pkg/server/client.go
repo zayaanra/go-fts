@@ -58,13 +58,11 @@ func (c *Client) readPump() {
 
 		switch rmsg.Protocol {
 		case api.INITIAL_CONNECT:
-			c.hub.FillRoom(c, rmsg.Session_ID)
-		case api.SEND_A_TO_B:
-			c.hub.ExchangePBKs(c, rmsg.Session_ID, rmsg.PB_Key, api.SEND_A_TO_B)
-		case api.SEND_B_TO_A:
-			c.hub.ExchangePBKs(c, rmsg.Session_ID, rmsg.PB_Key, api.SEND_B_TO_A)
+			c.hub.FillRoom(c, rmsg.SessionID)
+		case api.SHARE_PUBLIC_KEY:
+			c.hub.ExchangePBKs(c, rmsg.SessionID, rmsg.PublicKey)
 		case api.SHARE_CONNECTION_INFO:
-			c.hub.ExchangeConnections(c, rmsg.Session_ID, rmsg)			
+			c.hub.ExchangeConnections(c, rmsg.SessionID, rmsg)			
 		}
 	}
 }

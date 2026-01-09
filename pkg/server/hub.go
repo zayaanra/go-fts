@@ -87,8 +87,8 @@ func (h *Hub) FillRoom(client *Client, session_id string) {
 	}
 }
 
-func (h *Hub) ExchangePBKs(client *Client, session_id string, pb_key []byte, protocol int) {
-	room, ok := h.rooms[session_id]
+func (h *Hub) ExchangePBKs(client *Client, sessionID string, publicKey []byte) {
+	room, ok := h.rooms[sessionID]
 	if !ok {
 		return
 	}
@@ -107,15 +107,15 @@ func (h *Hub) ExchangePBKs(client *Client, session_id string, pb_key []byte, pro
 
 	smsg, _ := json.Marshal(
 		api.Message{
-			Protocol: protocol,
-			PB_Key: pb_key,
+			Protocol: api.SHARE_PUBLIC_KEY,
+			PublicKey: publicKey,
 		},
 	)
 
-	switch protocol {
-	case api.SEND_A_TO_B:
+	switch client {
+	case room.a.c:
 		room.b.c.send <- smsg
-	case api.SEND_B_TO_A:
+	case room.b.c:
 		room.a.c.send <- smsg
 	}
 }
