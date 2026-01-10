@@ -14,7 +14,7 @@ import (
 	"github.com/sethvargo/go-diceware/diceware"
 	"github.com/spf13/cobra"
 
-	"github.com/zayaanra/go-fts/internal/sec"
+	"github.com/zayaanra/go-fts/internal/crypt"
 	"github.com/zayaanra/go-fts/pkg/api"
 )
 
@@ -28,7 +28,7 @@ type Sender struct {
 	P *pake.Pake
 }
 
-func (s *Sender) Start() error {
+func (s *Sender) Rendevous() error {
 	p, err := pake.InitCurve([]byte(s.Passphrase), 0, "siec")
 	if err != nil {
 		return err
@@ -42,7 +42,7 @@ func (s *Sender) Start() error {
 	s.conn = conn
 
 	err = s.conn.WriteJSON(api.Message{
-		Protocol:   api.INITIAL_CONNECT,
+		Protocol: api.CONNECT,
 		SessionID: s.SessionID,
 	})
 	if err != nil {
@@ -61,9 +61,9 @@ func (s *Sender) Listen() error {
 		}
 
 		switch msg.Protocol {
-		case api.CONFIRMATION:
+		case api.ACKNOWLEDGE:
 			fmt.Println("Confirmed connection to HUB")
-			err = handleConfirmation(s.conn, s.SessionID, s.P.Bytes())
+			err = handleAcknowledgement(s.conn, s.SessionID, s.P.Bytes())
 
 		case api.SHARE_PUBLIC_KEY:
 			fmt.Println("Received PBK from B")
@@ -72,10 +72,12 @@ func (s *Sender) Listen() error {
 				return err
 			}
 			s.SessionKey = sessionKey
+
+			ln, _ := net.Listen("tcp", ":0")
 		
-		case api.SHARE_CONNECTION_INFO:
-			fmt.Println("Received connection info from B")
-			err = s.HandleIPExchange(msg.Data)
+		// case api.SHARE_CONNECTION_INFO:
+		// 	fmt.Println("Received connection info from B")
+		// 	err = s.HandleIPExchange(msg.Data)
 		}
 
 		if err != nil {
@@ -153,7 +155,7 @@ func (s *Sender) Close() error {
 	return nil
 }
 
-func handleConfirmation(conn *websocket.Conn, sessionID string, publicKey []byte) error {
+func handleAcknowledgement(conn *websocket.Conn, sessionID string, publicKey []byte) error {
 	err := conn.WriteJSON(api.Message{
 		Protocol: api.SHARE_PUBLIC_KEY,
 		SessionID: sessionID,
@@ -189,7 +191,7 @@ func SendCommand(ip string) *cobra.Command {
 				Passphrase: passphrase,
 			}
 
-			if err := p.Start(); err != nil {
+			if err := p.Rendevous(); err != nil {
 				log.Fatal(err)
 			}
 			defer p.Close()

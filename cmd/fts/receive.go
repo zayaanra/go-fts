@@ -14,7 +14,7 @@ import (
 	"github.com/schollz/pake/v3"
 	"github.com/spf13/cobra"
 
-	"github.com/zayaanra/go-fts/internal/sec"
+	"github.com/zayaanra/go-fts/internal/crypt"
 	"github.com/zayaanra/go-fts/pkg/api"
 )
 
@@ -28,7 +28,7 @@ type Receiver struct {
 	P *pake.Pake
 }
 
-func (r *Receiver) Start() error {
+func (r *Receiver) Rendevous() error {
 	p, err := pake.InitCurve([]byte(r.Passphrase), 1, "siec")
 	if err != nil {
 		return err
@@ -42,7 +42,7 @@ func (r *Receiver) Start() error {
 	r.conn = conn
 
 	err = r.conn.WriteJSON(api.Message{
-		Protocol:   api.INITIAL_CONNECT,
+		Protocol: api.CONNECT,
 		SessionID: r.SessionID,
 	})
 	if err != nil {
@@ -61,7 +61,7 @@ func (r * Receiver) Listen() error {
 		}
 
 		switch msg.Protocol {
-		case api.CONFIRMATION:
+		case api.ACKNOWLEDGE:
 			fmt.Println("Confirmed connection to HUB")
 
 		case api.SHARE_PUBLIC_KEY:
@@ -72,54 +72,57 @@ func (r * Receiver) Listen() error {
 			}
 			r.SessionKey = sessionKey
 
-		case api.SHARE_CONNECTION_INFO:
-			fmt.Println("Received connection info from A")
-			err = r.HandleIPExchange(nil)
-			if err != nil {
-				return err
-			}
+			ln, _ := net.Listen("tcp", ":0")
 
-			// TODO: better way to do this net.Listen?
-			ln, err := net.Listen("tcp", ":8090")
-			if err != nil {
-				log.Fatal(err)
-			}
-			defer ln.Close()
 
-			conn, err := ln.Accept()
-			if err != nil {
-				log.Fatal(err)
-			}
-			defer conn.Close()
+		// case api.SHARE_CONNECTION_INFO:
+		// 	fmt.Println("Received connection info from A")
+		// 	err = r.HandleIPExchange(nil)
+		// 	if err != nil {
+		// 		return err
+		// 	}
 
-			encrypted, err := io.ReadAll(conn)
-			if err != nil {
-				log.Fatal(err)
-			}
+		// 	// TODO: better way to do this net.Listen?
+		// 	ln, err := net.Listen("tcp", ":8090")
+		// 	if err != nil {
+		// 		log.Fatal(err)
+		// 	}
+		// 	defer ln.Close()
 
-			decrypted, err := sec.DecryptAES(encrypted, r.SessionKey)
-			if err != nil {
-				log.Fatal(err)
-			}
+		// 	conn, err := ln.Accept()
+		// 	if err != nil {
+		// 		log.Fatal(err)
+		// 	}
+		// 	defer conn.Close()
 
-			var msg api.Message
-			if err := json.Unmarshal(decrypted, &msg); err != nil {
-				log.Fatal(err)
-			}
+		// 	encrypted, err := io.ReadAll(conn)
+		// 	if err != nil {
+		// 		log.Fatal(err)
+		// 	}
+
+		// 	decrypted, err := sec.DecryptAES(encrypted, r.SessionKey)
+		// 	if err != nil {
+		// 		log.Fatal(err)
+		// 	}
+
+		// 	var msg api.Message
+		// 	if err := json.Unmarshal(decrypted, &msg); err != nil {
+		// 		log.Fatal(err)
+		// 	}
 
 			// TODO: Write file to local filepath
 			// log.Printf("Received message: %+v\n", string(msg.Data))
 			
 			
-		case api.SHARE_FILE_DATA:
-			fmt.Println("Receiving file data from A")
+		// case api.SHARE_FILE_DATA:
+		// 	fmt.Println("Receiving file data from A")
 			
-			decrypted, err := sec.DecryptAES(msg.Data, r.SessionKey)
-			if err != nil {
-				log.Fatal(err)
-			}
+		// 	decrypted, err := sec.DecryptAES(msg.Data, r.SessionKey)
+		// 	if err != nil {
+		// 		log.Fatal(err)
+		// 	}
 
-			os.WriteFile(r.FilePath, decrypted, 0777)
+		// 	os.WriteFile(r.FilePath, decrypted, 0777)
 		}
 	}
 }
@@ -195,7 +198,7 @@ func ReceiveCommand(ip string) *cobra.Command {
 				Passphrase: passphrase,
 			}
 
-			if err := p.Start(); err != nil {
+			if err := p.Rendevous(); err != nil {
 				log.Fatal(err)
 			}
 			defer p.Close()
