@@ -1,11 +1,11 @@
 package api
 
 const (
-	INITIAL_CONNECT       = 0
-	CONFIRMATION          = 1
+	CONNECT = 0
+	ACKNOWLEDGE = 1
 	SHARE_CONNECTION_INFO = 2
-	SHARE_PUBLIC_KEY	  = 4
-	SHARE_FILE_DATA       = 5
+	SHARE_PUBLIC_KEY = 4
+	SHARE_FILE_DATA = 5
 )
 
 type Message struct {
@@ -16,7 +16,7 @@ type Message struct {
 }
 
 type Peer interface {
-	Start() error
+	Rendevous() error
 	Listen() error
 	HandlePublicKeyExchange([]byte) ([]byte, error)
 	HandleIPExchange([]byte) error

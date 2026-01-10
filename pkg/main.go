@@ -8,7 +8,7 @@ import (
 )
 
 func main() {
-	hub := server.NewHub()
+	hub := server.NewMailbox()
 	go hub.Run()
 	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
 		server.ServeWS(hub, w, r)

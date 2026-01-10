@@ -25,7 +25,7 @@ const (
 )
 
 type Client struct {
-	hub *Hub
+	mailbox *Mailbox
 
 	conn *websocket.Conn
 
@@ -39,15 +39,15 @@ var upgrader = websocket.Upgrader{
 
 func (c *Client) readPump() {
 	defer func() {
-		c.hub.unregister <- c
+		c.mailbox.unregister <- c
 		c.conn.Close()
 	}()
 	c.conn.SetReadLimit(maxMessageSize)
 	c.conn.SetReadDeadline(time.Now().Add(pongWait))
 	c.conn.SetPongHandler(func(string) error { c.conn.SetReadDeadline(time.Now().Add(pongWait)); return nil })
 	for {
-		rmsg := api.Message{}
-		err := c.conn.ReadJSON(&rmsg)
+		msg := api.Message{}
+		err := c.conn.ReadJSON(&msg)
 		if err != nil {
 			log.Println(err)
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
@@ -56,13 +56,13 @@ func (c *Client) readPump() {
 			break
 		}
 
-		switch rmsg.Protocol {
-		case api.INITIAL_CONNECT:
-			c.hub.FillRoom(c, rmsg.SessionID)
+		switch msg.Protocol {
+		case api.CONNECT:
+			c.mailbox.FillRoom(c, &msg)
 		case api.SHARE_PUBLIC_KEY:
-			c.hub.ExchangePBKs(c, rmsg.SessionID, rmsg.PublicKey)
+			c.mailbox.ExchangePublicKey(c, msg.SessionID, msg.PublicKey)
 		case api.SHARE_CONNECTION_INFO:
-			c.hub.ExchangeConnections(c, rmsg.SessionID, rmsg)			
+			c.mailbox.ExchangeConnections(c, &msg)			
 		}
 	}
 }
@@ -101,15 +101,15 @@ func (c *Client) writePump() {
 	}
 }
 
-func ServeWS(hub *Hub, w http.ResponseWriter, r *http.Request) {
+func ServeWS(mailbox *Mailbox, w http.ResponseWriter, r *http.Request) {
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Println(err)
 		return
 	}
 
-	client := &Client{hub: hub, conn: conn, send: make(chan []byte)}
-	client.hub.register <- client
+	client := &Client{mailbox: mailbox, conn: conn, send: make(chan []byte)}
+	client.mailbox.register <- client
 
 	go client.writePump()
 	go client.readPump()
