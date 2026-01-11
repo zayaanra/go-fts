@@ -21,11 +21,6 @@ type Room struct {
 	b *Client
 }
 
-// type ExtendedClient struct {
-// 	c *Client
-// 	ready bool
-// }
-
 func NewMailbox() *Mailbox {
 	return &Mailbox{
 		clients: 	make(map[*Client]bool),
@@ -108,7 +103,7 @@ func (m *Mailbox) ExchangePublicKey(client *Client, sessionID string, publicKey 
 	}
 }
 
-func (m *Mailbox) ExchangeConnections(client *Client, msg *api.Message) {
+func (m *Mailbox) ExchangeIP(client *Client, msg *api.Message) {
 	sessionID := msg.SessionID
 
 	room, ok := m.rooms[sessionID]

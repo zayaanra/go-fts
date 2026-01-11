@@ -61,8 +61,8 @@ func (c *Client) readPump() {
 			c.mailbox.FillRoom(c, &msg)
 		case api.SHARE_PUBLIC_KEY:
 			c.mailbox.ExchangePublicKey(c, msg.SessionID, msg.PublicKey)
-		case api.SHARE_CONNECTION_INFO:
-			c.mailbox.ExchangeConnections(c, &msg)			
+		case api.SHARE_IP:
+			c.mailbox.ExchangeIP(c, &msg)			
 		}
 	}
 }
