@@ -3,9 +3,9 @@ package api
 const (
 	CONNECT = 0
 	ACKNOWLEDGE = 1
-	SHARE_CONNECTION_INFO = 2
-	SHARE_PUBLIC_KEY = 4
-	SHARE_FILE_DATA = 5
+	SHARE_PUBLIC_KEY = 2
+	SHARE_IP = 3
+	SHARE_FILE_DATA = 4
 )
 
 type Message struct {
