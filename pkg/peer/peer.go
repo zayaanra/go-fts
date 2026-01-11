@@ -1,9 +1,6 @@
 package peer
 
 import (
-	"fmt"
-	"net"
-
 	"github.com/gorilla/websocket"
 	"github.com/schollz/pake/v3"
 	"github.com/zayaanra/go-fts/pkg/api"
@@ -15,19 +12,24 @@ const (
 )
 
 type Peer struct {
-	Role int
-
 	Conn *websocket.Conn
-
-	SessionID string
-	SessionKey []byte
-	Passphrase string
-
 	Curve *pake.Pake
+	FileData []byte
+	Role int
+	SenderIP string
+	ReceiverIP string
+	Session *Session
+}
+
+type Session struct {
+	ID string
+	Passphrase string
+	Key []byte
 }
 
 func NewPeer(role int, sessionID string, passphrase string) *Peer {
-	return &Peer{Role: role, SessionID: sessionID, Passphrase: passphrase}
+	s := &Session{ID: sessionID, Passphrase: passphrase}
+	return &Peer{Role: role, Session: s}
 }
 
 func (p *Peer) Rendevous(mailboxIP string) error {
@@ -39,13 +41,13 @@ func (p *Peer) Rendevous(mailboxIP string) error {
 
 	err = p.Conn.WriteJSON(api.Message{
 		Protocol: api.CONNECT,
-		SessionID: p.SessionID,
+		SessionID: p.Session.ID,
 	})
 	if err != nil {
 		return err
 	}
 
-	curve, err := pake.InitCurve([]byte(p.Passphrase), p.Role, "siec")
+	curve, err := pake.InitCurve([]byte(p.Session.Passphrase), p.Role, "siec")
 	if err != nil {
 		return err
 	}
@@ -64,54 +66,24 @@ func (p *Peer) ListenWS() error {
 
 		switch msg.Protocol {
 		case api.ACKNOWLEDGE:
-			fmt.Println("Received ACK from Mailbox Server")
-			if p.Role == PAKE_INITIATOR {
-				err = p.Conn.WriteJSON(api.Message{
-					Protocol: api.SHARE_PUBLIC_KEY,
-					SessionID: p.SessionID,
-					PublicKey: p.Curve.Bytes(),
-				})
-				if err != nil {
-					return err
-				}
-			}
-
-		case api.SHARE_PUBLIC_KEY:
-			fmt.Println("Received Public Key")
-			err = p.Curve.Update(msg.PublicKey)
+			err = handleAck(p)
 			if err != nil {
 				return err
 			}
 
+		case api.SHARE_PUBLIC_KEY:
+			err = handleSharePublicKey(p, msg.PublicKey)
 			if p.Role == PAKE_RESPONDER {
-				err = p.Conn.WriteJSON(api.Message{
-					Protocol: api.SHARE_PUBLIC_KEY,
-					SessionID: p.SessionID,
-					PublicKey: p.Curve.Bytes(),
-				})
-				if err != nil {
-					return err
-				}
+				return err
 			}
 
-			sessionKey, _ := p.Curve.SessionKey()
-			p.SessionKey = sessionKey
+		case api.SHARE_IP:
+			err = handleShareIP(p, msg.Data)
+			if p.Role == PAKE_INITIATOR {
+				return err
+			}
 		}
 	}
-}
-
-func (p *Peer) ListenTCP() error {
-	if (p.Role == PAKE_RESPONDER) {
-		ln, err := net.Listen("tcp", ":0")
-		if err != nil {
-			return err
-		}
-
-		// addr := ln.Addr().(*net.TCPAddr)
-
-
-	}
-	return nil
 }
 
 func (p *Peer) Close() error {
