@@ -3,6 +3,7 @@ package fts
 import (
 	"fmt"
 	"log"
+	"os"
 	"strings"
 
 	"github.com/google/uuid"
@@ -19,14 +20,7 @@ func SendCommand(ip string) *cobra.Command {
 		Long:  "Send a file to a machine",
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
-			// TODO: What if file is too large to be stored in memory? (can stream data to receiver)
-			// data, err := os.ReadFile(args[0])
-			// if err != nil {
-			// 	log.Fatal(err)
-			// }
-			
 			// TODO: Return errors up the chain and handle them in the RunE field of the Cobra command
-			// TODO: Ensure PAKE session key is passed through Key Derivation Function (KDF) like HKDF
 
 			list, _ := diceware.Generate(5)
 			sessionID := uuid.New().String()[:5]
@@ -39,11 +33,20 @@ func SendCommand(ip string) *cobra.Command {
 			defer p.Close()
 
 			fmt.Println("On the receiving machine, run the receive command and enter the following code:")
-			fmt.Println(passphrase)
+			fmt.Println(passphrase + "\n")
+
+			// TODO: What if file is too large to be stored in memory? (can stream data to receiver)
+			data, err := os.ReadFile(args[0])
+			if err != nil {
+						log.Fatal(err)
+			}
+			p.FileData = data
 
 			if err := p.ListenWS(); err != nil {
 				log.Fatal(err)
 			}
+
+			fmt.Printf("Sending '%s' -> '%s", args[0], p.ReceiverIP)
 		},
 	}
 }

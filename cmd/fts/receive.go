@@ -36,6 +36,8 @@ func ReceiveCommand(ip string) *cobra.Command {
 			if err := p.ListenWS(); err != nil {
 				log.Fatal(err)
 			}
+
+			fmt.Printf("Receiving 'result.txt' -> '%s", p.SenderIP)
 		},
 	}
 }
