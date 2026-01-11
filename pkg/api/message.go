@@ -14,11 +14,3 @@ type Message struct {
 	SessionID string
 	Data       []byte
 }
-
-type Peer interface {
-	Rendevous() error
-	Listen() error
-	HandlePublicKeyExchange([]byte) ([]byte, error)
-	HandleIPExchange([]byte) error
-	Close() error
-}
