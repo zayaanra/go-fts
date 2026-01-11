@@ -2,11 +2,14 @@ package crypt
 
 import (
 	"bytes"
-    "crypto/aes"
-    "crypto/cipher"
-    "crypto/rand"
-    "fmt"
-    "io"
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
+	"crypto/sha256"
+	"fmt"
+	"io"
+
+	"golang.org/x/crypto/hkdf"
 )
 
 func EncryptAES(plaintext, key []byte) ([]byte, error) {
@@ -48,4 +51,11 @@ func DecryptAES(ciphertext, key []byte) ([]byte, error) {
 
 	padding := int(ciphertext[len(ciphertext)-1])
 	return ciphertext[:len(ciphertext)-padding], nil
+}
+
+func HKDF(sessionKey []byte) []byte {
+	hkdf := hkdf.New(sha256.New, sessionKey, nil, []byte("go-fts session"))
+	key := make([]byte, 32)
+	io.ReadFull(hkdf, key)
+	return key
 }
