@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"os"
 
@@ -19,7 +18,6 @@ func main() {
 	rootCmd := fts.RootCommand(os.Getenv("IP_ADDRESS"))
 
 	if err := rootCmd.Execute(); err != nil {
-		fmt.Println(err)
 		os.Exit(1)
 	}
 }
