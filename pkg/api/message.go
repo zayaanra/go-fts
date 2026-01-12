@@ -8,6 +8,8 @@ const (
 	SHARE_FILE_DATA = 4
 )
 
+// TODO: Make message handling more structured and suitable for transmission
+// TODO: Add File struct with header and content specifically for file transmission
 type Message struct {
 	Protocol int
 	PublicKey []byte
