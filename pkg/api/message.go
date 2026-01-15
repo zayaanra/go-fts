@@ -16,3 +16,8 @@ type Message struct {
 	SessionID string
 	Data       []byte
 }
+
+type File struct {
+	Length []byte
+	Data []byte
+}

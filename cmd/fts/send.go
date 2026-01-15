@@ -1,7 +1,10 @@
 package fts
 
 import (
+	"encoding/binary"
+	"encoding/json"
 	"fmt"
+	"net"
 	"os"
 	"strings"
 
@@ -10,6 +13,8 @@ import (
 	"github.com/sethvargo/go-diceware/diceware"
 	"github.com/spf13/cobra"
 
+	"github.com/zayaanra/go-fts/pkg/api"
+	"github.com/zayaanra/go-fts/pkg/crypt"
 	"github.com/zayaanra/go-fts/pkg/peer"
 )
 
@@ -22,7 +27,7 @@ func SendCommand(ip string) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			filePath := args[0]
 
-			_, err := os.Stat(filePath)
+			fileInfo, err := os.Stat(filePath)
 			if err != nil {
 				return fmt.Errorf("Could not find file: %w", err)
 			}
@@ -56,6 +61,28 @@ func SendCommand(ip string) *cobra.Command {
 				return fmt.Errorf("Either PAKE or something else failed: %w", err)
 			}
 
+			conn, err := net.Dial("tcp", p.ReceiverIP)
+			if err != nil {
+				return fmt.Errorf("Failed to connect to receiver: %w", err)
+			}
+			defer conn.Close()
+
+
+			fileSize := make([]byte, 8)
+			binary.BigEndian.PutUint64(fileSize, uint64(fileInfo.Size()))
+
+			fileData := make([]byte, fileInfo.Size())
+			file.Read(fileData)
+
+			fileMsg, _ := json.Marshal(
+				api.File{
+					Length: fileSize, 
+					Data: fileData,
+				},
+			)
+			encrypted, _ := crypt.EncryptAES(fileMsg, p.Session.Key)
+			conn.Write(encrypted)
+
 			// proxyReader := io.TeeReader(file, bar)
 			// if err := p.StreamData(proxyReader); err != nil {
 			// 	return fmt.Errorf("Transfer failed: %w", err)
@@ -63,15 +90,6 @@ func SendCommand(ip string) *cobra.Command {
 
 			color.Cyan("\nTransfer complete!")
 			return nil
-
-			// TODO: What if file is too large to be stored in memory? (can stream data to receiver)
-			// data, err := os.ReadFile(args[0])
-			// if err != nil {
-			// 			log.Fatal(err)
-			// }
-			// p.FileData = data
-
-
 
 			// fileInfo, _ := os.Stat(args[0])
 			// totalSize := fileInfo.Size()

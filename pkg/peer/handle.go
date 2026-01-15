@@ -2,12 +2,13 @@ package peer
 
 import (
 	"encoding/binary"
+	"encoding/json"
 	"io"
 	"net"
 	"os"
 
-	"github.com/zayaanra/go-fts/pkg/crypt"
 	"github.com/zayaanra/go-fts/pkg/api"
+	"github.com/zayaanra/go-fts/pkg/crypt"
 )
 
 func handleAck(p *Peer) error {
@@ -71,15 +72,17 @@ func handleSharePublicKey(p *Peer, publicKey []byte) error {
 		defer conn.Close()
 
 		p.SenderIP = conn.RemoteAddr().String()
-	
+		
 		var size uint64
 		binary.Read(conn, binary.BigEndian, &size)
-		buf := make([]byte, size)
+		buf := make([]byte, size) // TODO: makeslice: len out of range
 		io.ReadFull(conn, buf)
 		
 		// TODO: Write file back in receive.go, handle file naming
 		decrypted, err := crypt.DecryptAES(buf, p.Session.Key)
-		os.WriteFile("result.txt", decrypted, 0777)
+		file := &api.File{}
+		json.Unmarshal(decrypted, file)
+		os.WriteFile("result.txt", file.Data, 0777)
 	}
 	return nil
 }
@@ -93,22 +96,17 @@ func handleShareIP(p *Peer, data []byte) error {
 	addr := string(decrypted)
 	p.ReceiverIP = addr
 	if p.Role == PAKE_INITIATOR {
-		conn, err := net.Dial("tcp", addr)
-		if err != nil {
-			return err
-		}
+		// encrypted, err := crypt.EncryptAES([]byte(p.FileData), p.Session.Key)
+		// if err != nil {
+		// 	return err
+		// }
 
-		encrypted, err := crypt.EncryptAES([]byte(p.FileData), p.Session.Key)
-		if err != nil {
-			return err
-		}
-
-		binary.Write(conn, binary.BigEndian, uint64(len(encrypted)))
-		_, err = conn.Write(encrypted)
-		if err != nil {
-			return err
-		}
-		conn.Close()
+		// binary.Write(conn, binary.BigEndian, uint64(len(encrypted)))
+		// _, err = conn.Write(encrypted)
+		// if err != nil {
+		// 	return err
+		// }
+		// conn.Close()
 	}
 	return nil
 }
