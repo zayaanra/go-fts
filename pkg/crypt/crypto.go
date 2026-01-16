@@ -18,10 +18,10 @@ func EncryptAES(plaintext, key []byte) ([]byte, error) {
 		return nil, err
 	}
 
-	padding := aes.BlockSize - len(plaintext) % aes.BlockSize
+	padding := aes.BlockSize - len(plaintext)%aes.BlockSize
 	padtext := append(plaintext, bytes.Repeat([]byte{byte(padding)}, padding)...)
 
-	ciphertext := make([]byte, aes.BlockSize + len(padtext))
+	ciphertext := make([]byte, aes.BlockSize+len(padtext))
 	iv := ciphertext[:aes.BlockSize]
 	if _, err := io.ReadFull(rand.Reader, iv); err != nil {
 		return nil, err

@@ -24,9 +24,9 @@ func ReceiveCommand(ip string) *cobra.Command {
 			scanner := bufio.NewScanner(os.Stdin)
 			scanner.Scan()
 			passphrase := scanner.Text()
-			
+
 			sessionID := strings.Split(passphrase, "-")[0]
-			
+
 			p := peer.NewPeer(peer.PAKE_RESPONDER, sessionID, passphrase)
 			if err := p.Rendevous(ip); err != nil {
 				return err
@@ -34,7 +34,7 @@ func ReceiveCommand(ip string) *cobra.Command {
 			defer p.Close()
 
 			if err := p.ListenWS(); err != nil {
-				return fmt.Errorf("Either PAKE or something else failed: %w", err) 
+				return fmt.Errorf("Either PAKE or something else failed: %w", err)
 			}
 
 			// 1. Create the destination file
@@ -44,15 +44,15 @@ func ReceiveCommand(ip string) *cobra.Command {
 			// }
 			// defer f.Close()
 
-			// 2. Setup Progress Bar (Note: You might need to send the 
+			// 2. Setup Progress Bar (Note: You might need to send the
 			// file size over the network first to make this bar accurate)
-			// bar := progressbar.Default(-1, "Downloading") 
+			// bar := progressbar.Default(-1, "Downloading")
 
 			// 3. Wrap file with progress bar
 			// proxyWriter := io.MultiWriter(f, bar)
 
 			// fmt.Printf("Receiving data into %s...\n", outputPath)
-			
+
 			// if err := p.ReceiveData(proxyWriter); err != nil {
 			// 	return err
 			//}

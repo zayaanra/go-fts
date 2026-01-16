@@ -67,7 +67,6 @@ func SendCommand(ip string) *cobra.Command {
 			}
 			defer conn.Close()
 
-
 			fileSize := make([]byte, 8)
 			binary.BigEndian.PutUint64(fileSize, uint64(fileInfo.Size()))
 
@@ -76,8 +75,8 @@ func SendCommand(ip string) *cobra.Command {
 
 			fileMsg, _ := json.Marshal(
 				api.File{
-					Length: fileSize, 
-					Data: fileData,
+					Length: fileSize,
+					Data:   fileData,
 				},
 			)
 			encrypted, _ := crypt.EncryptAES(fileMsg, p.Session.Key)

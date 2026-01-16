@@ -8,12 +8,12 @@ import (
 )
 
 type Mailbox struct {
-	clients 	map[*Client]bool
-	register 	chan *Client
-	unregister 	chan *Client
-	broadcast 	chan []byte
+	clients    map[*Client]bool
+	register   chan *Client
+	unregister chan *Client
+	broadcast  chan []byte
 
-	rooms		map[string]*Room
+	rooms map[string]*Room
 }
 
 type Room struct {
@@ -23,11 +23,11 @@ type Room struct {
 
 func NewMailbox() *Mailbox {
 	return &Mailbox{
-		clients: 	make(map[*Client]bool),
-		register: 	make(chan *Client),
+		clients:    make(map[*Client]bool),
+		register:   make(chan *Client),
 		unregister: make(chan *Client),
-		broadcast:	make(chan []byte),
-		rooms:		make(map[string]*Room),
+		broadcast:  make(chan []byte),
+		rooms:      make(map[string]*Room),
 	}
 }
 
@@ -90,7 +90,7 @@ func (m *Mailbox) ExchangePublicKey(client *Client, sessionID string, publicKey 
 
 	msg, _ := json.Marshal(
 		api.Message{
-			Protocol: api.SHARE_PUBLIC_KEY,
+			Protocol:  api.SHARE_PUBLIC_KEY,
 			PublicKey: publicKey,
 		},
 	)

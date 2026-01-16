@@ -14,7 +14,7 @@ import (
 func handleAck(p *Peer) error {
 	if p.Role == PAKE_INITIATOR {
 		err := p.Conn.WriteJSON(api.Message{
-			Protocol: api.SHARE_PUBLIC_KEY,
+			Protocol:  api.SHARE_PUBLIC_KEY,
 			SessionID: p.Session.ID,
 			PublicKey: p.Curve.Bytes(),
 		})
@@ -31,7 +31,7 @@ func handleSharePublicKey(p *Peer, publicKey []byte) error {
 
 	if p.Role == PAKE_RESPONDER {
 		err = p.Conn.WriteJSON(api.Message{
-			Protocol: api.SHARE_PUBLIC_KEY,
+			Protocol:  api.SHARE_PUBLIC_KEY,
 			SessionID: p.Session.ID,
 			PublicKey: p.Curve.Bytes(),
 		})
@@ -39,7 +39,7 @@ func handleSharePublicKey(p *Peer, publicKey []byte) error {
 			return err
 		}
 	}
-	
+
 	sessionKey, _ := p.Curve.SessionKey()
 	p.Session.Key = crypt.HKDF(sessionKey)
 
@@ -55,16 +55,16 @@ func handleSharePublicKey(p *Peer, publicKey []byte) error {
 		if err != nil {
 			return err
 		}
-		
+
 		err = p.Conn.WriteJSON(api.Message{
-			Protocol: api.SHARE_IP,
+			Protocol:  api.SHARE_IP,
 			SessionID: p.Session.ID,
-			Data: encrypted,
+			Data:      encrypted,
 		})
 		if err != nil {
 			return err
 		}
-		
+
 		conn, err := ln.Accept()
 		if err != nil {
 			return err
@@ -72,12 +72,12 @@ func handleSharePublicKey(p *Peer, publicKey []byte) error {
 		defer conn.Close()
 
 		p.SenderIP = conn.RemoteAddr().String()
-		
+
 		var size uint64
 		binary.Read(conn, binary.BigEndian, &size)
 		buf := make([]byte, size) // TODO: makeslice: len out of range
 		io.ReadFull(conn, buf)
-		
+
 		// TODO: Write file back in receive.go, handle file naming
 		decrypted, err := crypt.DecryptAES(buf, p.Session.Key)
 		file := &api.File{}
@@ -95,18 +95,5 @@ func handleShareIP(p *Peer, data []byte) error {
 
 	addr := string(decrypted)
 	p.ReceiverIP = addr
-	if p.Role == PAKE_INITIATOR {
-		// encrypted, err := crypt.EncryptAES([]byte(p.FileData), p.Session.Key)
-		// if err != nil {
-		// 	return err
-		// }
-
-		// binary.Write(conn, binary.BigEndian, uint64(len(encrypted)))
-		// _, err = conn.Write(encrypted)
-		// if err != nil {
-		// 	return err
-		// }
-		// conn.Close()
-	}
 	return nil
 }

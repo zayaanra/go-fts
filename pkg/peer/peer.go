@@ -7,24 +7,24 @@ import (
 )
 
 const (
-    PAKE_INITIATOR = 0
-    PAKE_RESPONDER = 1
+	PAKE_INITIATOR = 0
+	PAKE_RESPONDER = 1
 )
 
 type Peer struct {
-	Conn *websocket.Conn
-	Curve *pake.Pake
-	FileData []byte
-	Role int
-	SenderIP string
+	Conn       *websocket.Conn
+	Curve      *pake.Pake
+	FileData   []byte
+	Role       int
+	SenderIP   string
 	ReceiverIP string
-	Session *Session
+	Session    *Session
 }
 
 type Session struct {
-	ID string
+	ID         string
 	Passphrase string
-	Key []byte
+	Key        []byte
 }
 
 func NewPeer(role int, sessionID string, passphrase string) *Peer {
@@ -33,14 +33,14 @@ func NewPeer(role int, sessionID string, passphrase string) *Peer {
 }
 
 func (p *Peer) Rendevous(mailboxIP string) error {
-	conn, _, err := websocket.DefaultDialer.Dial("ws://" + mailboxIP + ":8080/ws", nil)
+	conn, _, err := websocket.DefaultDialer.Dial("ws://"+mailboxIP+":8080/ws", nil)
 	if err != nil {
 		return err
 	}
 	p.Conn = conn
 
 	err = p.Conn.WriteJSON(api.Message{
-		Protocol: api.CONNECT,
+		Protocol:  api.CONNECT,
 		SessionID: p.Session.ID,
 	})
 	if err != nil {

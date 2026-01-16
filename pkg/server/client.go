@@ -62,7 +62,7 @@ func (c *Client) readPump() {
 		case api.SHARE_PUBLIC_KEY:
 			c.mailbox.ExchangePublicKey(c, msg.SessionID, msg.PublicKey)
 		case api.SHARE_IP:
-			c.mailbox.ExchangeIP(c, &msg)			
+			c.mailbox.ExchangeIP(c, &msg)
 		}
 	}
 }
