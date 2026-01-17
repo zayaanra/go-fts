@@ -9,7 +9,7 @@ import (
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 
-	"github.com/zayaanra/go-fts/pkg/peer"
+	"github.com/zayaanra/go-fts/peer"
 )
 
 func ReceiveCommand(ip string) *cobra.Command {
@@ -21,10 +21,11 @@ func ReceiveCommand(ip string) *cobra.Command {
 			// outputPath := args[0]
 
 			fmt.Println("Enter the code shared with you:")
+		
 			scanner := bufio.NewScanner(os.Stdin)
 			scanner.Scan()
-			passphrase := scanner.Text()
 
+			passphrase := scanner.Text()
 			sessionID := strings.Split(passphrase, "-")[0]
 
 			p := peer.NewPeer(peer.PAKE_RESPONDER, sessionID, passphrase)
@@ -33,31 +34,11 @@ func ReceiveCommand(ip string) *cobra.Command {
 			}
 			defer p.Close()
 
-			if err := p.ListenWS(); err != nil {
+			if err := p.Listen(); err != nil {
 				return fmt.Errorf("Either PAKE or something else failed: %w", err)
 			}
 
-			// 1. Create the destination file
-			// f, err := os.Create(outputPath)
-			// if err != nil {
-			// 	return fmt.Errorf("failed to create file: %w", err)
-			// }
-			// defer f.Close()
-
-			// 2. Setup Progress Bar (Note: You might need to send the
-			// file size over the network first to make this bar accurate)
-			// bar := progressbar.Default(-1, "Downloading")
-
-			// 3. Wrap file with progress bar
-			// proxyWriter := io.MultiWriter(f, bar)
-
-			// fmt.Printf("Receiving data into %s...\n", outputPath)
-
-			// if err := p.ReceiveData(proxyWriter); err != nil {
-			// 	return err
-			//}
-
-			color.Green("\nFile received successfully!")
+			color.Cyan("\nFile received successfully!")
 			return nil
 		},
 	}

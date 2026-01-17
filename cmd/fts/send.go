@@ -2,20 +2,21 @@ package fts
 
 import (
 	"encoding/binary"
-	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/fatih/color"
 	"github.com/google/uuid"
+	"github.com/schollz/progressbar/v3"
 	"github.com/sethvargo/go-diceware/diceware"
 	"github.com/spf13/cobra"
 
-	"github.com/zayaanra/go-fts/pkg/api"
-	"github.com/zayaanra/go-fts/pkg/crypt"
-	"github.com/zayaanra/go-fts/pkg/peer"
+	"github.com/zayaanra/go-fts/crypt"
+	"github.com/zayaanra/go-fts/peer"
 )
 
 func SendCommand(ip string) *cobra.Command {
@@ -27,16 +28,13 @@ func SendCommand(ip string) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			filePath := args[0]
 
-			fileInfo, err := os.Stat(filePath)
-			if err != nil {
-				return fmt.Errorf("Could not find file: %w", err)
-			}
-
 			file, err := os.Open(filePath)
 			if err != nil {
 				return err
 			}
 			defer file.Close()
+
+			fileMetadata, _ := os.Stat(filePath)
 
 			list, _ := diceware.Generate(5)
 			sessionID := uuid.New().String()[:5]
@@ -48,16 +46,20 @@ func SendCommand(ip string) *cobra.Command {
 			}
 			defer p.Close()
 
-			green := color.New(color.FgGreen).Add(color.Bold)
 			fmt.Println("On the receiving machine, run the receive command and enter the following code:")
+			green := color.New(color.FgGreen).Add(color.Bold)
 			green.Printf("> %s\n\n", passphrase)
 
-			// bar := progressbar.DefaultBytes(
-			// 	fileInfo.Size(),
-			// 	"Sending file",
-			// )
+			bar := progressbar.NewOptions64(
+				fileMetadata.Size(),
+				progressbar.OptionSetDescription("Sending file"),
+				progressbar.OptionShowBytes(true),
+				progressbar.OptionSetWidth(40),
+				progressbar.OptionThrottle(65*time.Millisecond),
+				progressbar.OptionClearOnFinish(),
+			)
 
-			if err := p.ListenWS(); err != nil {
+			if err = p.Listen(); err != nil {
 				return fmt.Errorf("Either PAKE or something else failed: %w", err)
 			}
 
@@ -66,42 +68,37 @@ func SendCommand(ip string) *cobra.Command {
 				return fmt.Errorf("Failed to connect to receiver: %w", err)
 			}
 			defer conn.Close()
+			
+			buf := make([]byte, 32*1024)
+			for {
+				n, err := file.Read(buf)
+				if n > 0 {
+					encrypted, err := crypt.EncryptAES(buf[:n], p.Session.Key)
+					if err != nil {
+						return err
+					}
 
-			fileSize := make([]byte, 8)
-			binary.BigEndian.PutUint64(fileSize, uint64(fileInfo.Size()))
+					var lenBuf [8]byte
+					binary.BigEndian.PutUint64(lenBuf[:], uint64(len(encrypted)))
+					conn.Write(lenBuf[:])
 
-			fileData := make([]byte, fileInfo.Size())
-			file.Read(fileData)
+					conn.Write(encrypted)
 
-			fileMsg, _ := json.Marshal(
-				api.File{
-					Length: fileSize,
-					Data:   fileData,
-				},
-			)
-			encrypted, _ := crypt.EncryptAES(fileMsg, p.Session.Key)
-			conn.Write(encrypted)
+					bar.Add(n)
+				}
 
-			// proxyReader := io.TeeReader(file, bar)
-			// if err := p.StreamData(proxyReader); err != nil {
-			// 	return fmt.Errorf("Transfer failed: %w", err)
-			// }
+				if err == io.EOF {
+					break
+				}
+				if err != nil {
+					return err
+				}
+			}
+			bar.Finish()
 
 			color.Cyan("\nTransfer complete!")
+
 			return nil
-
-			// fileInfo, _ := os.Stat(args[0])
-			// totalSize := fileInfo.Size()
-
-			// bar := progressbar.DefaultBytes(
-			// 	totalSize,
-			// 	"sending",
-			// )
-
-			// file, _ := os.Open(args[0])
-			// defer file.Close()
-
-			// fmt.Printf("Sending '%s' -> '%s", args[0], p.ReceiverIP)
 		},
 	}
 }
